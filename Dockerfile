@@ -5,7 +5,7 @@ ENV VIRTUAL_ENV $APP_HOME/.venv
 
 RUN python -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-COPY ./ERPSincronitzarConsumer/ $APP_HOME/
+COPY ./SesameToReporting/ $APP_HOME/
 RUN pip install --upgrade pip
 
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
@@ -15,4 +15,4 @@ RUN apt-get update && apt-get install -y unixodbc-dev unixodbc odbcinst odbcinst
 COPY freetds.conf /etc/freetds/freetds.conf
 
 RUN pip install -r $APP_HOME/requirements.txt
-CMD python $APP_HOME/ERPSincronitzarConsumer.py
+CMD python $APP_HOME/SesameToReporting.py
