@@ -23,6 +23,8 @@ import os
 URL_EMPLOYEES_SESAME = "/core/v3/employees"
 URL_TIMEENTRIES_SESAME = "/project/v1/time-entries"
 SESAME_INSTALLACIO_DEPARTMENT_ID = "c6c30fb6-565b-4109-b370-dc50d93a143b"
+SESAME_RESIDENCIAL_DEPARTMENT_ID = "4d2eeee6-b936-446c-8b88-7869f6483a87"
+SESAME_POSTVENDA_DEPARTMENT_ID = "9cca5654-3d1b-49f7-b3db-728ef40f9b43"
 URL_API_SESAME = os.environ['URL_API_SESAME']
 TOKEN_API_SESAME = os.environ['TOKEN_API_SESAME']
 
@@ -44,24 +46,7 @@ BIOSTAR_SQLSERVER_DATABASE = os.environ['BIOSTAR_SQLSERVER_DATABASE']
 CONN_TIMEOUT = 50
 DAYS_TO_RECALCULATE = 50
 
-def synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar, now, strFrom, strTo, prefixTeowin, prefixBiostar):
-    logging.info('   Processing timeentries from origin ERP (Sesame)')
-
-    # deleting rows to be re-calculated later again
-    strFromAux = strFrom
-    while (strFromAux <= strTo):
-        anyo = strFromAux.year
-        mes = strFromAux.month
-        if len(str(mes)) == 1:
-            mes = '0' + str(mes)
-        dia = strFromAux.day
-        if len(str(dia)) == 1:
-           dia = '0' + str(dia)
-
-        myCursorTeowin.execute("DELETE FROM " + prefixTeowin + "tobras_horasfabricacion WHERE codSeccion = 'S90' AND CodPresupuesto = 'INSTAL·LADOR' AND Mes = '" + str(mes) + "' AND Anyo = '" + str(anyo) + "' AND dia = '" + str(dia) + "' ")
-        dbTeowin.commit()
-
-        strFromAux = strFromAux + datetime.timedelta(1)
+def synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar, now, strFrom, strTo, prefixTeowin, prefixBiostar, department):
 
     # processing timeentries from origin ERP (Sesame)
     try:
@@ -76,7 +61,7 @@ def synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar
                 "Content-Type": "application/json"
             }
 
-            get_req1 = requests.get(URL_API_SESAME + URL_EMPLOYEES_SESAME + "?page=" + str(page1) + "&departmentIds=" + str(SESAME_INSTALLACIO_DEPARTMENT_ID) + "&status=active", 
+            get_req1 = requests.get(URL_API_SESAME + URL_EMPLOYEES_SESAME + "?page=" + str(page1) + "&departmentIds=" + str(department) + "&status=active", 
                                    headers=headers, verify=False, timeout=CONN_TIMEOUT)
             response1 = get_req1.json()
 
@@ -88,6 +73,10 @@ def synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar
                 firstName = data1["firstName"]
                 lastName = data1["lastName"]
                 codEmployee = data1["customFields"][0]["value"]
+
+                if str(codEmployee) == "":
+                    logging.error('      Employee without code, check why. Name: ' + str(firstName) + ' ' + str(lastName))                
+                    continue # Next!                    
 
                 logging.info('      Processing employee code: ' + str(codEmployee) + ', name: ' + str(firstName) + ' ' + str(lastName))
 
@@ -235,7 +224,28 @@ def main():
         disconnectSQLServer(dbBiostar)
         sys.exit(1)
 
-    synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar, now, strFrom, strTo, prefixTeowin, prefixBiostar)    
+    # deleting rows to be re-calculated later again
+    strFromAux = strFrom
+    while (strFromAux <= strTo):
+        anyo = strFromAux.year
+        mes = strFromAux.month
+        if len(str(mes)) == 1:
+            mes = '0' + str(mes)
+        dia = strFromAux.day
+        if len(str(dia)) == 1:
+           dia = '0' + str(dia)
+
+        myCursorTeowin.execute("DELETE FROM " + prefixTeowin + "tobras_horasfabricacion WHERE codSeccion = 'S90' AND CodPresupuesto = 'INSTAL·LADOR' AND Mes = '" + str(mes) + "' AND Anyo = '" + str(anyo) + "' AND dia = '" + str(dia) + "' ")
+        dbTeowin.commit()
+
+        strFromAux = strFromAux + datetime.timedelta(1)
+
+    logging.info('   Processing timeentries from origin ERP (Sesame) - INSTAL.LADORS')
+    synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar, now, strFrom, strTo, prefixTeowin, prefixBiostar, SESAME_INSTALLACIO_DEPARTMENT_ID)    
+    #logging.info('   Processing timeentries from origin ERP (Sesame) - RESIDENCIAL')
+    #synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar, now, strFrom, strTo, prefixTeowin, prefixBiostar, SESAME_RESIDENCIAL_DEPARTMENT_ID)    
+    #logging.info('   Processing timeentries from origin ERP (Sesame) - POSTVENDA')
+    #synchronize_timeentries(dbTeowin, myCursorTeowin, dbBiostar, myCursorBiostar, now, strFrom, strTo, prefixTeowin, prefixBiostar, SESAME_POSTVENDA_DEPARTMENT_ID)    
 
     # Send email with execution summary
     send_email("SesameToReporting", ENVIRONMENT, now, datetime.datetime.now(), executionResult)
